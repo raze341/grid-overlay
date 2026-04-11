@@ -29,98 +29,135 @@
   };
 
   class Grid {
-    constructor(userOptions = {}) {
-      this.canvas = document.createElement("canvas");
-      this.ctx = this.canvas.getContext("2d");
+    constructor(canvas, userOptions = {}) {
+      if (!canvas || !(canvas instanceof HTMLCanvasElement)) {
+        throw new Error("Grid requires a valid canvas element");
+      }
+
+      this.canvas = canvas;
+      this.ctx = canvas.getContext("2d");
       this.options = { ...DEFAULT_OPTIONS, ...userOptions };
+      this.observer = null;
 
       this.setup();
-      // this.resize();
-      this.observer = this.createObserver();
+      this.resize();
+      this.createResizeObserver();
+    }
+
+    getAvailableSize() {
+      const container = this.canvas.parentElement;
+
+      if (!container) {
+        return {
+          width: this.canvas.clientWidth || 0,
+          height: this.canvas.clientHeight || 0,
+        };
+      }
+
+      const rect = container.getBoundingClientRect();
+      const style = getComputedStyle(container);
+
+      const padding = {
+        top: parseFloat(style.paddingTop) || 0,
+        left: parseFloat(style.paddingLeft) || 0,
+        bottom: parseFloat(style.paddingBottom) || 0,
+        right: parseFloat(style.paddingRight) || 0,
+      };
+
+      const border = {
+        top: parseFloat(style.borderTopWidth) || 0,
+        left: parseFloat(style.borderLeftWidth) || 0,
+        bottom: parseFloat(style.borderBottomWidth) || 0,
+        right: parseFloat(style.borderRightWidth) || 0,
+      };
+
+      const availableWidth =
+        rect.width - padding.left - padding.right - border.left - border.right;
+      const availableHeight =
+        rect.height - padding.top - padding.bottom - border.top - border.bottom;
+
+      return {
+        width: Math.max(0, availableWidth),
+        height: Math.max(0, availableHeight),
+      };
     }
 
     resize() {
+      const newSize = this.getAvailableSize();
+      this.width = newSize.width;
+      this.height = newSize.height;
       this.scale();
       this.draw();
     }
 
     setup() {
-      this.canvas.style.position = "fixed";
-      this.canvas.style.inset = 0;
       this.canvas.style.display = "block";
       this.canvas.style.boxSizing = "border-box";
       this.canvas.style.pointerEvents = "none";
-      this.canvas.style.height = "100%";
-      this.canvas.style.width = "100%";
-
-      document.body.appendChild(this.canvas);
     }
 
     scale() {
       const canvas = this.canvas;
       const ctx = this.ctx;
-      const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
 
-      canvas.width = Math.round(rect.width * dpr);
-      canvas.height = Math.round(rect.height * dpr);
+      canvas.width = Math.round(this.width * dpr);
+      canvas.height = Math.round(this.height * dpr);
 
-      // canvas.style.width = `${rect.width}px`;
-      // canvas.style.height = `${rect.height}px`;
+      canvas.style.width = `${this.width}px`;
+      canvas.style.height = `${this.height}px`;
 
       ctx.scale(dpr, dpr);
     }
 
     draw() {
       const { step, lineColor, lineWidth } = this.options;
-      const canvas = this.canvas;
       const ctx = this.ctx;
-      const rect = canvas.getBoundingClientRect();
 
       ctx.save();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
       ctx.beginPath();
       ctx.strokeStyle = lineColor;
       ctx.lineWidth = lineWidth;
 
-      for (let y = 0; y <= rect.height; y += step) {
+      for (let y = 0; y <= this.height; y += step) {
         ctx.moveTo(0, y);
-        ctx.lineTo(rect.width, y);
+        ctx.lineTo(this.width, y);
       }
 
-      for (let x = 0; x <= rect.width; x += step) {
+      for (let x = 0; x <= this.width; x += step) {
         ctx.moveTo(x, 0);
-        ctx.lineTo(x, rect.height);
+        ctx.lineTo(x, this.height);
       }
 
       ctx.stroke();
-
       ctx.restore();
     }
 
-    destroy() {
-      this.releaseObserver();
-      this.canvas.remove();
-    }
+    createResizeObserver() {
+      const container = this.canvas.parentElement;
 
-    createObserver() {
       const handleResize = throttled(() => {
         this.resize();
       });
 
-      const observer = new ResizeObserver(() => {
+      this.observer = new ResizeObserver(() => {
         handleResize();
       });
 
-      observer.observe(document.documentElement);
-      return observer;
+      this.observer.observe(container);
     }
 
-    releaseObserver() {
+    releaseResizeObserver() {
       if (this.observer) {
         this.observer.disconnect();
+        this.observer = null;
       }
+    }
+
+    destroy() {
+      this.releaseResizeObserver();
     }
   }
 
